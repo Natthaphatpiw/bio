@@ -24,7 +24,7 @@ if (flutterVersionName == null) {
 
 android {
     namespace "com.bioguard.nexus"
-    compileSdk 34
+    compileSdk 36
     ndkVersion flutter.ndkVersion
 
     compileOptions {
@@ -63,4 +63,7 @@ flutter {
 
 dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
+    // Required for Flutter's Play Store deferred components integration when minifying with R8
+    // (provides com.google.android.play.core.* classes referenced by FlutterPlayStoreSplitApplication)
+    implementation "com.google.android.play:core:1.10.3"
 }

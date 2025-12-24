@@ -1,16 +1,16 @@
 # FastAPI Server
-fastapi
-uvicorn[standard]
-python-multipart
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+python-multipart==0.0.12
 
 # AI/ML
-onnxruntime
-numpy
-opencv-python-headless
+onnxruntime==1.19.0
+numpy==1.26.4
+opencv-python-headless==4.10.0.84
 
 # Image Processing
-Pillow
+Pillow==10.4.0
 
 # Utilities
-python-dotenv
-pydantic
+python-dotenv==1.0.1
+pydantic==2.9.0

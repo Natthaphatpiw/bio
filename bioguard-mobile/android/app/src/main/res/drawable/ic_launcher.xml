@@ -1,0 +1,16 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Simple placeholder launcher icon (so builds don't fail if mipmap icons are missing) -->
+    <path
+        android:fillColor="#0EA5A4"
+        android:pathData="M54,6C27.49,6 6,27.49 6,54s21.49,48 48,48 48,-21.49 48,-48S80.51,6 54,6z" />
+
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,28c-10,0 -18,8 -18,18v10c0,10 8,18 18,18s18,-8 18,-18V46c0,-10 -8,-18 -18,-18zM46,46c0,-4.42 3.58,-8 8,-8s8,3.58 8,8v10c0,4.42 -3.58,8 -8,8s-8,-3.58 -8,-8V46z" />
+</vector>
+
