@@ -1,0 +1,17 @@
+body {
+  background: #f6f7fb;
+}
+
+.card {
+  border-radius: 14px;
+}
+
+#resultCard.real {
+  border: 2px solid #16a34a;
+}
+
+#resultCard.fake {
+  border: 2px solid #dc2626;
+}
+
+

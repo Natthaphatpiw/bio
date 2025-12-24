@@ -34,15 +34,21 @@ class LivenessDetector:
             model_path: Path to the ONNX model file.
                        Defaults to 'models/MiniFASNetV2.onnx'
         """
-        self.model_path = model_path or os.path.join(
+        default_model = os.getenv("MODEL_PATH", "").strip()
+        self.model_path = model_path or default_model or os.path.join(
             os.path.dirname(__file__),
             "models",
-            "MiniFASNetV2.onnx"
+            "MiniFASNetV1SE.onnx"
         )
         self.session = None
         self.input_name = None
         self.input_size = 80  # MiniFASNetV2 input size
         self.threshold = 0.90  # Confidence threshold for real face
+        # Class mapping varies by training/export. Override via env var if needed.
+        # We'll also auto-pick a sensible default once we know the output class count.
+        self._real_class_index_env = os.getenv("REAL_CLASS_INDEX", "").strip()
+        self.real_class_index = int(self._real_class_index_env) if self._real_class_index_env.isdigit() else None
+        self.class_count = None
 
         self._load_model()
 
@@ -63,6 +69,25 @@ class LivenessDetector:
                 providers=['CPUExecutionProvider']
             )
             self.input_name = self.session.get_inputs()[0].name
+            # Determine class count from output shape, if available
+            try:
+                out_shape = self.session.get_outputs()[0].shape  # e.g. ['batch_size', 3]
+                last_dim = out_shape[-1] if out_shape else None
+                self.class_count = int(last_dim) if isinstance(last_dim, int) else None
+            except Exception:
+                self.class_count = None
+
+            # If user didn't explicitly set REAL_CLASS_INDEX, choose a best-effort default:
+            # - For 2-class outputs, many exports are [spoof, real] => real=1
+            # - For 3-class outputs in this repo's model, "real" is commonly the last index (2)
+            if self.real_class_index is None:
+                if self.class_count == 2:
+                    self.real_class_index = 1
+                elif self.class_count == 3:
+                    self.real_class_index = 2
+                else:
+                    self.real_class_index = 1
+
             print(f"Model loaded successfully: {self.model_path}")
         except Exception as e:
             print(f"Failed to load model: {e}")
@@ -85,11 +110,10 @@ class LivenessDetector:
         # Resize to model input size
         img_resized = cv2.resize(image, (self.input_size, self.input_size))
 
-        # Convert BGR to RGB
-        img_rgb = cv2.cvtColor(img_resized, cv2.COLOR_BGR2RGB)
-
-        # Normalize to [0, 1]
-        img_float = img_rgb.astype(np.float32) / 255.0
+        # IMPORTANT: Many MiniFASNet reference implementations feed OpenCV images directly
+        # (BGR channel order) into ToTensor(), which does NOT swap channels.
+        # So we keep BGR here to match that pipeline.
+        img_float = img_resized.astype(np.float32) / 255.0
 
         # Transpose from HWC to CHW format
         img_transposed = img_float.transpose((2, 0, 1))
@@ -131,11 +155,21 @@ class LivenessDetector:
             raw_output = outputs[0][0]
 
             # Apply softmax to get probabilities
-            # Output format: [spoof_score, real_score]
+            # NOTE: Some exports are binary ([spoof, real]) while others are multi-class
+            # (e.g. 3-class). Always softmax across the last dim.
             exp_scores = np.exp(raw_output - np.max(raw_output))  # Numerical stability
             softmax_probs = exp_scores / np.sum(exp_scores)
 
-            real_score = float(softmax_probs[1]) if len(softmax_probs) > 1 else float(softmax_probs[0])
+            probs = [float(x) for x in softmax_probs.tolist()]
+            predicted_class = int(np.argmax(softmax_probs))
+
+            real_idx = int(self.real_class_index) if self.real_class_index is not None else 1
+            if 0 <= real_idx < len(probs):
+                real_score = float(probs[real_idx])
+            else:
+                # Fallback to "most confident" if misconfigured
+                real_score = float(probs[predicted_class])
+
             is_real = real_score > self.threshold
 
             processing_time = (time.time() - start_time) * 1000
@@ -144,7 +178,11 @@ class LivenessDetector:
                 "is_real": is_real,
                 "confidence": real_score,
                 "threshold": self.threshold,
-                "raw_score": float(raw_output[1]) if len(raw_output) > 1 else float(raw_output[0]),
+                "class_count": int(len(probs)),
+                "real_class_index": real_idx,
+                "predicted_class": predicted_class,
+                "probs": probs,
+                "raw_scores": [float(x) for x in np.asarray(raw_output).tolist()],
                 "processing_time_ms": round(processing_time, 2)
             }
 
@@ -201,7 +239,7 @@ class FacePreprocessor:
         if os.path.exists(cascade_path):
             self.face_cascade = cv2.CascadeClassifier(cascade_path)
 
-    def detect_and_crop(self, image: np.ndarray, scale: float = 2.7) -> np.ndarray | None:
+    def detect_and_crop(self, image: np.ndarray, scale: float = 2.7, pad: bool = True) -> np.ndarray | None:
         """
         Detect face and crop with specified scale.
 
@@ -239,13 +277,147 @@ class FacePreprocessor:
         center_y = y + h // 2
         crop_size = int(max(w, h) * scale)
 
-        # Calculate crop bounds
-        x1 = max(0, center_x - crop_size // 2)
-        y1 = max(0, center_y - crop_size // 2)
-        x2 = min(image.shape[1], center_x + crop_size // 2)
-        y2 = min(image.shape[0], center_y + crop_size // 2)
+        # Calculate crop bounds (may go out of image)
+        x1 = center_x - crop_size // 2
+        y1 = center_y - crop_size // 2
+        x2 = x1 + crop_size
+        y2 = y1 + crop_size
 
-        return image[y1:y2, x1:x2]
+        if not pad:
+            x1c = max(0, x1)
+            y1c = max(0, y1)
+            x2c = min(image.shape[1], x2)
+            y2c = min(image.shape[0], y2)
+            return image[y1c:y2c, x1c:x2c]
+
+        # Pad image so we can keep the requested crop size (important for 2.7x)
+        h_img, w_img = image.shape[:2]
+        pad_left = max(0, -x1)
+        pad_top = max(0, -y1)
+        pad_right = max(0, x2 - w_img)
+        pad_bottom = max(0, y2 - h_img)
+
+        if pad_left or pad_top or pad_right or pad_bottom:
+            padded = cv2.copyMakeBorder(
+                image,
+                pad_top,
+                pad_bottom,
+                pad_left,
+                pad_right,
+                borderType=cv2.BORDER_REFLECT_101,
+            )
+        else:
+            padded = image
+
+        x1p = x1 + pad_left
+        y1p = y1 + pad_top
+        x2p = x2 + pad_left
+        y2p = y2 + pad_top
+        return padded[y1p:y2p, x1p:x2p]
+
+    def detect_and_crop_with_info(self, image: np.ndarray, scale: float = 2.7, pad: bool = True) -> dict:
+        """
+        Same as detect_and_crop(), but returns debug info for troubleshooting.
+        """
+        h, w = image.shape[:2]
+
+        info = {
+            "input_h": int(h),
+            "input_w": int(w),
+            "scale": float(scale),
+            "method": None,
+            "face_detected": False,
+            "bbox_xywh": None,
+            "crop_xyxy": None,
+            "crop_h": None,
+            "crop_w": None,
+        }
+
+        info["pad"] = bool(pad)
+
+        if self.face_cascade is None:
+            cropped = self._center_crop(image, scale)
+            ch, cw = cropped.shape[:2]
+            info.update(
+                method="center_crop_no_cascade",
+                crop_h=int(ch),
+                crop_w=int(cw),
+            )
+            return {"cropped": cropped, "info": info}
+
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        faces = self.face_cascade.detectMultiScale(
+            gray,
+            scaleFactor=1.1,
+            minNeighbors=5,
+            minSize=(60, 60)
+        )
+
+        if len(faces) == 0:
+            cropped = self._center_crop(image, scale)
+            ch, cw = cropped.shape[:2]
+            info.update(
+                method="center_crop_no_face",
+                crop_h=int(ch),
+                crop_w=int(cw),
+            )
+            return {"cropped": cropped, "info": info}
+
+        x, y, fw, fh = max(faces, key=lambda f: f[2] * f[3])
+        info["face_detected"] = True
+        info["bbox_xywh"] = [int(x), int(y), int(fw), int(fh)]
+
+        center_x = x + fw // 2
+        center_y = y + fh // 2
+        crop_size = int(max(fw, fh) * scale)
+
+        # Intended square crop bounds (may go out of image)
+        x1 = center_x - crop_size // 2
+        y1 = center_y - crop_size // 2
+        x2 = x1 + crop_size
+        y2 = y1 + crop_size
+
+        # How much padding would be needed?
+        pad_left = max(0, -x1)
+        pad_top = max(0, -y1)
+        pad_right = max(0, x2 - w)
+        pad_bottom = max(0, y2 - h)
+        info["pad_px"] = [int(pad_left), int(pad_top), int(pad_right), int(pad_bottom)]
+
+        if not pad:
+            x1c = max(0, x1)
+            y1c = max(0, y1)
+            x2c = min(w, x2)
+            y2c = min(h, y2)
+            info["crop_xyxy"] = [int(x1c), int(y1c), int(x2c), int(y2c)]
+            cropped = image[y1c:y2c, x1c:x2c]
+            ch, cw = cropped.shape[:2]
+            info.update(method="haar_face_crop_clamped", crop_h=int(ch), crop_w=int(cw))
+            return {"cropped": cropped, "info": info}
+
+        # Pad and then crop exact crop_size
+        if pad_left or pad_top or pad_right or pad_bottom:
+            padded = cv2.copyMakeBorder(
+                image,
+                pad_top,
+                pad_bottom,
+                pad_left,
+                pad_right,
+                borderType=cv2.BORDER_REFLECT_101,
+            )
+        else:
+            padded = image
+
+        x1p = x1 + pad_left
+        y1p = y1 + pad_top
+        x2p = x2 + pad_left
+        y2p = y2 + pad_top
+        info["crop_xyxy"] = [int(x1p), int(y1p), int(x2p), int(y2p)]
+
+        cropped = padded[y1p:y2p, x1p:x2p]
+        ch, cw = cropped.shape[:2]
+        info.update(method="haar_face_crop_padded", crop_h=int(ch), crop_w=int(cw))
+        return {"cropped": cropped, "info": info}
 
     def _center_crop(self, image: np.ndarray, scale: float) -> np.ndarray:
         """Center crop as fallback when no face detected."""
