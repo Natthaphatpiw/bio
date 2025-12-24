@@ -31,3 +31,4 @@ python-multipart
 jinja2
 aiofiles
 onnxruntime
+gunicorn
