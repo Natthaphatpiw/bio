@@ -1,0 +1,14 @@
+# Place your MiniFASNetV2.onnx model file in this directory
+
+# To get the model:
+# 1. Clone the Silent-Face-Anti-Spoofing repository
+# 2. Convert the PyTorch model to ONNX using the export_onnx.py script
+# 3. Place the resulting MiniFASNetV2.onnx file here
+
+# Expected model input:
+# - Shape: (1, 3, 80, 80)
+# - Format: RGB, float32, normalized [0, 1]
+
+# Expected model output:
+# - Shape: (1, 2)
+# - Format: [spoof_score, real_score] before softmax
