@@ -12,9 +12,16 @@ import java.io.FileReader
 
 class MainActivity: FlutterActivity() {
     private val CHANNEL = "com.bioguard.nexus/security"
+    private val LIGHT_SYNC_CHANNEL = "com.bioguard.nexus/light_sync_camera"
+    private lateinit var lightSyncCameraController: LightSyncCamera2Controller
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        lightSyncCameraController = LightSyncCamera2Controller(
+            this,
+            flutterEngine.renderer
+        )
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             if (call.method == "checkEnvironment") {
@@ -22,6 +29,26 @@ class MainActivity: FlutterActivity() {
                 result.success(securityReport)
             } else {
                 result.notImplemented()
+            }
+        }
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            LIGHT_SYNC_CHANNEL
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "open" -> {
+                    val lens = call.argument<String>("lens") ?: "front"
+                    lightSyncCameraController.open(lens == "front", result)
+                }
+                "captureFrame" -> {
+                    lightSyncCameraController.captureFrame(result)
+                }
+                "close" -> {
+                    lightSyncCameraController.close()
+                    result.success(true)
+                }
+                else -> result.notImplemented()
             }
         }
     }
