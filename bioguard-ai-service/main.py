@@ -163,6 +163,27 @@ def _predict_face_authenticity(image_bgr: np.ndarray, bbox):
     }
 
 
+REAL_PROB_THRESHOLD = float(os.getenv("REAL_PROB_THRESHOLD", "0.8"))
+
+
+def _apply_real_threshold(result: dict) -> dict:
+    """
+    Tighten decision rule: even if model predicts label==1 (real),
+    require prob_real >= REAL_PROB_THRESHOLD to accept as real.
+    """
+    probs = result.get("probabilities") or {}
+    prob_real = float(probs.get("real") or 0.0)
+    label = int(result.get("label") if result.get("label") is not None else -1)
+    is_real = bool(label == 1 and prob_real >= REAL_PROB_THRESHOLD)
+
+    # Use prob_real as the user-facing confidence for the "real" claim
+    result = dict(result)
+    result["is_real"] = is_real
+    result["confidence"] = prob_real
+    result["threshold"] = REAL_PROB_THRESHOLD
+    return result
+
+
 @app.get("/demo", response_class=HTMLResponse)
 async def demo(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
@@ -186,7 +207,7 @@ async def api_predict(file: UploadFile = File(...)):
     except Exception:
         bbox = _fallback_center_bbox(image_bgr)
 
-    result = _predict_face_authenticity(image_bgr, bbox)
+    result = _apply_real_threshold(_predict_face_authenticity(image_bgr, bbox))
 
     # Base64 images for UI
     pil_image = Image.fromarray(cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB))
@@ -222,18 +243,19 @@ async def verify_liveness(request: LivenessRequest):
         except Exception:
             bbox = _fallback_center_bbox(image_bgr)
 
-        r = _predict_face_authenticity(image_bgr, bbox)
+        r = _apply_real_threshold(_predict_face_authenticity(image_bgr, bbox))
 
         return LivenessResponse(
             is_real=bool(r["is_real"]),
             confidence=float(r["confidence"]),
-            threshold=0.5,
+            threshold=float(r["threshold"]),
             message="Real face detected" if r["is_real"] else "Spoof detected",
             details={
                 "bbox": bbox,
                 "probabilities": r.get("probabilities", {}),
                 "label": r.get("label"),
                 "model": os.path.basename(MODEL_PATH),
+                "real_prob_threshold": float(r["threshold"]),
             },
         )
     except HTTPException:

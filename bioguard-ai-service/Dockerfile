@@ -1,12 +1,12 @@
 # BioGuard AI Service Dockerfile
-FROM python:3.11-slim
+FROM python:3.13-slim
 
 # Set working directory
 WORKDIR /app
 
 # Install system dependencies for OpenCV
 RUN apt-get update && apt-get install -y \
-    libgl1-mesa-glx \
+    libgl1 \
     libglib2.0-0 \
     curl \
     libgomp1 \
@@ -14,6 +14,10 @@ RUN apt-get update && apt-get install -y \
 
 # Copy requirements first for caching
 COPY requirements.txt .
+
+# Install CPU-only PyTorch wheels first to avoid pulling huge CUDA dependencies
+# (important for small disks like many VM boot volumes).
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch torchvision
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
