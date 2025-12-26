@@ -1,8 +1,17 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
+import { Manrope, Playfair_Display } from 'next/font/google';
 import './globals.css';
 
-const inter = Inter({ subsets: ['latin'] });
+const manrope = Manrope({
+  subsets: ['latin'],
+  variable: '--font-sans',
+  display: 'swap',
+});
+const playfair = Playfair_Display({
+  subsets: ['latin'],
+  variable: '--font-heading',
+  display: 'swap',
+});
 
 export const metadata: Metadata = {
   title: 'BioGuard Nexus - Merchant Dashboard',
@@ -16,7 +25,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={inter.className}>{children}</body>
+      <body className={`${manrope.variable} ${playfair.variable}`}>
+        {children}
+      </body>
     </html>
   );
 }
