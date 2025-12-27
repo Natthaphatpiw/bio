@@ -382,3 +382,7 @@ coverage/
 # Temporary files
 *.tmp
 *.temp
+
+# Allow Flutter app source
+!bioguard-mobile/lib/
+!bioguard-mobile/lib/**

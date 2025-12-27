@@ -1080,5 +1080,3 @@ export async function POST(request: Request) {
 1. ไฟล์ .apk แอพหลักที่ใช้งาน 
 2. ai server เดียวฉันนำโฟลเดอร์ไป deploy บน cloud
 3. frontend ในการสร้าง เดียวฉันนำโฟลเดอร์ไป deploy บน cloud
-
-เพิ่ม commit
