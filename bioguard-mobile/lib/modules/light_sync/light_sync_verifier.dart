@@ -37,6 +37,10 @@ class _LightSyncVerifierState extends State<LightSyncVerifier> {
   // Normalized ratio thresholds (SpecDiff-style)
   static const double _minNormalizedRatio = 0.08;
   static const double _minSpatialDifferential = 0.15;
+  static const double _minNormalizedMean = 0.04;
+  static const double _minVariance = 0.008;
+  static const double _minVarianceMargin = 0.004;
+  static const double _minSpecularRatio = 0.006;
 
   CameraController? _controller;
   final LightSyncNativeCamera _nativeCamera = LightSyncNativeCamera();
@@ -300,6 +304,10 @@ class _LightSyncVerifierState extends State<LightSyncVerifier> {
       final normalizedRedRatios = <double>[];
       final normalizedBlueRatios = <double>[];
       final spatialDifferentials = <double>[];
+      final normalizedMeans = <double>[];
+      final normalizedVariances = <double>[];
+      final backgroundVariances = <double>[];
+      final specularRatios = <double>[];
 
       for (var i = 0; i < totalRounds; i++) {
         final darkBytes = darkFrames[i];
@@ -323,13 +331,48 @@ class _LightSyncVerifierState extends State<LightSyncVerifier> {
         final redBackground = _calculateBackgroundDifference(darkImg, redImg);
         final blueBackground = _calculateBackgroundDifference(darkImg, blueImg);
 
-        ambientLumas.add(redCenter['baseLuma'] ?? 0);
+        final faceBox = _faceBox(darkImg);
+        final eyeBox = _eyeBox(faceBox);
+        final redNorm = _calculateNormalizedDiffStats(
+          darkImg,
+          redImg,
+          faceBox,
+        );
+        final blueNorm = _calculateNormalizedDiffStats(
+          darkImg,
+          blueImg,
+          faceBox,
+        );
+        final redEyeNorm = _calculateNormalizedDiffStats(
+          darkImg,
+          redImg,
+          eyeBox,
+        );
+        final blueEyeNorm = _calculateNormalizedDiffStats(
+          darkImg,
+          blueImg,
+          eyeBox,
+        );
+        final redBgNorm = _calculateBackgroundNormalizedStats(darkImg, redImg);
+        final blueBgNorm = _calculateBackgroundNormalizedStats(darkImg, blueImg);
+
+        final normMean = _maxValue(redNorm['mean']!, blueNorm['mean']!);
+        final normVar = _maxValue(redNorm['variance']!, blueNorm['variance']!);
+        final bgVar = _maxValue(redBgNorm['variance']!, blueBgNorm['variance']!);
+        final specularRatio =
+            _maxValue(redEyeNorm['highRatio']!, blueEyeNorm['highRatio']!);
+
+        ambientLumas.add(redNorm['baseLuma'] ?? 0);
         saturationRatios.add(
           _maxValue(
-            redCenter['saturationRatio'] ?? 0,
-            blueCenter['saturationRatio'] ?? 0,
+            redNorm['saturationRatio'] ?? 0,
+            blueNorm['saturationRatio'] ?? 0,
           ),
         );
+        normalizedMeans.add(normMean);
+        normalizedVariances.add(normVar);
+        backgroundVariances.add(bgVar);
+        specularRatios.add(specularRatio);
 
         // Calculate normalized ratio (SpecDiff-style)
         final redNormalized = _calculateNormalizedRatio(
@@ -440,15 +483,40 @@ class _LightSyncVerifierState extends State<LightSyncVerifier> {
             blueMargin > dominanceMargin;
         final blueNormalizedOk = normalizedBlueRatios[i] > _minNormalizedRatio;
 
+        final normalizedMeanOk = normalizedMeans[i] > _minNormalizedMean;
+        final varianceOk = normalizedVariances[i] > _minVariance &&
+            normalizedVariances[i] >
+                (backgroundVariances[i] + _minVarianceMargin);
+        final specularOk = specularRatios[i] > _minSpecularRatio;
+
         // Flexible pass criteria: need to pass majority of checks
-        final redChecks = [redChannelOk, redLumaOk, redSpatialOk, redDominanceOk, redNormalizedOk];
-        final blueChecks = [blueChannelOk, blueLumaOk, blueSpatialOk, blueDominanceOk, blueNormalizedOk];
+        final redChecks = [
+          redChannelOk,
+          redLumaOk,
+          redSpatialOk,
+          redDominanceOk,
+          redNormalizedOk,
+          normalizedMeanOk,
+          varianceOk,
+        ];
+        final blueChecks = [
+          blueChannelOk,
+          blueLumaOk,
+          blueSpatialOk,
+          blueDominanceOk,
+          blueNormalizedOk,
+          normalizedMeanOk,
+          varianceOk,
+        ];
 
         final redPassCount = redChecks.where((c) => c).length;
         final bluePassCount = blueChecks.where((c) => c).length;
 
-        // Pass if at least 3 out of 5 criteria are met for each color
-        if (redPassCount >= 3 && bluePassCount >= 3) {
+        final physicsOk = normalizedMeanOk && varianceOk;
+
+        // Pass if physics checks are strong and color checks are reasonable
+        if ((redPassCount >= 4 && bluePassCount >= 4 && physicsOk) ||
+            (physicsOk && specularOk && redPassCount >= 3 && bluePassCount >= 3)) {
           roundsPassed++;
         }
       }
@@ -470,6 +538,10 @@ class _LightSyncVerifierState extends State<LightSyncVerifier> {
       final avgNormalizedRed = _median(normalizedRedRatios);
       final avgNormalizedBlue = _median(normalizedBlueRatios);
       final avgSpatialDiff = _median(spatialDifferentials);
+      final avgNormalizedMean = _median(normalizedMeans);
+      final avgVariance = _median(normalizedVariances);
+      final avgBackgroundVar = _median(backgroundVariances);
+      final avgSpecular = _median(specularRatios);
 
       // Relaxed pass requirement: need to pass at least half the rounds
       final requiredPasses = _requiredPassCount(validRounds);
@@ -482,8 +554,12 @@ class _LightSyncVerifierState extends State<LightSyncVerifier> {
             avgNormalizedBlue > _minNormalizedRatio;
         final spatialOk = avgSpatialDiff > _minSpatialDifferential;
         final dominanceOk = redDominance > 1.02 && blueDominance > 1.02;
+        final physicsOk = avgNormalizedMean > _minNormalizedMean &&
+            avgVariance > _minVariance &&
+            avgVariance > (avgBackgroundVar + _minVarianceMargin);
 
-        if (normalizedOk && spatialOk && dominanceOk) {
+        if ((normalizedOk && spatialOk && dominanceOk) ||
+            (physicsOk && avgSpecular > _minSpecularRatio)) {
           passed = true;
         }
       }
@@ -496,9 +572,15 @@ class _LightSyncVerifierState extends State<LightSyncVerifier> {
       );
 
       // Boost confidence with normalized ratios
-      final normalizedBoost = ((avgNormalizedRed + avgNormalizedBlue) / 2 * 0.3)
-          .clamp(0.0, 0.15);
-      confidence = (confidence + normalizedBoost).clamp(0.0, 0.99);
+      final normalizedBoost = ((avgNormalizedRed + avgNormalizedBlue) / 2 * 0.25)
+          .clamp(0.0, 0.12);
+      final physicsBoost = ((avgNormalizedMean / 0.12) * 0.2 +
+              (avgVariance / 0.02) * 0.2)
+          .clamp(0.0, 0.2);
+      final specularBoost = (avgSpecular * 0.15).clamp(0.0, 0.05);
+      confidence =
+          (confidence + normalizedBoost + physicsBoost + specularBoost)
+              .clamp(0.0, 0.99);
       confidence *= (roundsPassed / validRounds).clamp(0.5, 1.0).toDouble();
 
       return {
@@ -516,6 +598,10 @@ class _LightSyncVerifierState extends State<LightSyncVerifier> {
           'normalizedRedRatio': avgNormalizedRed,
           'normalizedBlueRatio': avgNormalizedBlue,
           'spatialDifferential': avgSpatialDiff,
+          'normalizedMean': avgNormalizedMean,
+          'variance': avgVariance,
+          'backgroundVariance': avgBackgroundVar,
+          'specularRatio': avgSpecular,
           'adaptiveThresholds': adaptiveThresholds,
         }
       };
@@ -561,6 +647,99 @@ class _LightSyncVerifierState extends State<LightSyncVerifier> {
   ) {
     final total = faceResponse + backgroundResponse + 0.001;
     return ((faceResponse - backgroundResponse) / total).clamp(-1.0, 1.0);
+  }
+
+  _Box _faceBox(img.Image frame) {
+    final size = (frame.width * 0.22).toInt();
+    final left = (frame.width ~/ 2) - size ~/ 2;
+    final top = (frame.height ~/ 2) - size ~/ 2;
+    return _Box(left, top, size, size);
+  }
+
+  _Box _eyeBox(_Box faceBox) {
+    final eyeHeight = (faceBox.height * 0.28).toInt();
+    final eyeTop = faceBox.top + (faceBox.height * 0.15).toInt();
+    return _Box(faceBox.left, eyeTop, faceBox.width, eyeHeight);
+  }
+
+  Map<String, double> _calculateNormalizedDiffStats(
+    img.Image baseFrame,
+    img.Image flashFrame,
+    _Box box,
+  ) {
+    final clampedLeft = box.left.clamp(0, baseFrame.width - 1).toInt();
+    final clampedTop = box.top.clamp(0, baseFrame.height - 1).toInt();
+    final clampedWidth = _maxInt(1, box.width);
+    final clampedHeight = _maxInt(1, box.height);
+
+    double sum = 0;
+    double sumSq = 0;
+    double baseLuma = 0;
+    double flashLuma = 0;
+    int highCount = 0;
+    int saturated = 0;
+    int count = 0;
+
+    for (int y = clampedTop; y < clampedTop + clampedHeight; y++) {
+      for (int x = clampedLeft; x < clampedLeft + clampedWidth; x++) {
+        if (x >= 0 && x < baseFrame.width && y >= 0 && y < baseFrame.height) {
+          final basePixel = baseFrame.getPixel(x, y);
+          final flashPixel = flashFrame.getPixel(x, y);
+          final baseLum = _luma(basePixel.r, basePixel.g, basePixel.b);
+          final flashLum = _luma(flashPixel.r, flashPixel.g, flashPixel.b);
+          final diff = (flashLum - baseLum).abs() / (flashLum + baseLum + 0.001);
+
+          sum += diff;
+          sumSq += diff * diff;
+          baseLuma += baseLum;
+          flashLuma += flashLum;
+          if (diff > 0.6) {
+            highCount++;
+          }
+          if (flashLum > 245) {
+            saturated++;
+          }
+          count++;
+        }
+      }
+    }
+
+    if (count == 0) count = 1;
+    final mean = sum / count;
+    final variance = (sumSq / count) - (mean * mean);
+
+    return {
+      'mean': mean,
+      'variance': variance.clamp(0.0, 1.0),
+      'highRatio': highCount / count,
+      'baseLuma': baseLuma / count,
+      'flashLuma': flashLuma / count,
+      'saturationRatio': saturated / count,
+    };
+  }
+
+  Map<String, double> _calculateBackgroundNormalizedStats(
+    img.Image baseFrame,
+    img.Image flashFrame,
+  ) {
+    final roiSize = (baseFrame.width * 0.18).toInt();
+    final lefts = [0, baseFrame.width - roiSize];
+    final tops = [0, baseFrame.height - roiSize];
+    final stats = <Map<String, double>>[];
+
+    for (final left in lefts) {
+      for (final top in tops) {
+        stats.add(
+          _calculateNormalizedDiffStats(
+            baseFrame,
+            flashFrame,
+            _Box(left, top, roiSize, roiSize),
+          ),
+        );
+      }
+    }
+
+    return _aggregateNormalizedStats(stats);
   }
 
   Map<String, double> _calculateColorDifference(
@@ -729,6 +908,33 @@ class _LightSyncVerifierState extends State<LightSyncVerifier> {
       'flashLuma': aggregate(diffs.map((d) => d['flashLuma'] ?? 0).toList()),
       'saturationRatio':
           aggregate(diffs.map((d) => d['saturationRatio'] ?? 0).toList()),
+    };
+  }
+
+  Map<String, double> _aggregateNormalizedStats(
+    List<Map<String, double>> stats,
+  ) {
+    if (stats.isEmpty) {
+      return {
+        'mean': 0,
+        'variance': 0,
+        'highRatio': 0,
+        'baseLuma': 0,
+        'flashLuma': 0,
+        'saturationRatio': 0,
+      };
+    }
+
+    double aggregate(List<double> values) => _median(values);
+
+    return {
+      'mean': aggregate(stats.map((s) => s['mean'] ?? 0).toList()),
+      'variance': aggregate(stats.map((s) => s['variance'] ?? 0).toList()),
+      'highRatio': aggregate(stats.map((s) => s['highRatio'] ?? 0).toList()),
+      'baseLuma': aggregate(stats.map((s) => s['baseLuma'] ?? 0).toList()),
+      'flashLuma': aggregate(stats.map((s) => s['flashLuma'] ?? 0).toList()),
+      'saturationRatio':
+          aggregate(stats.map((s) => s['saturationRatio'] ?? 0).toList()),
     };
   }
 
@@ -908,4 +1114,13 @@ class _LightSyncVerifierState extends State<LightSyncVerifier> {
       ),
     );
   }
+}
+
+class _Box {
+  final int left;
+  final int top;
+  final int width;
+  final int height;
+
+  const _Box(this.left, this.top, this.width, this.height);
 }

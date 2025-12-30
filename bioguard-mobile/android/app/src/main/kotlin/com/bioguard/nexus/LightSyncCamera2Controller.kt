@@ -323,7 +323,8 @@ class LightSyncCamera2Controller(
 
         try {
             val requestBuilder = device.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)
-            requestBuilder.addTarget(reader!!.surface)
+            val surface = previewSurface ?: return
+            requestBuilder.addTarget(surface)
             requestBuilder.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
             requestBuilder.set(
                 CaptureRequest.CONTROL_AF_MODE,

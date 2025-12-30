@@ -1,9 +1,11 @@
 """
-BioGuard AI Service - Face Anti-Spoofing (PyTorch .pth)
+BioGuard AI Service - Face Anti-Spoofing + AI Agent System
 
 - /demo: UI page (templates + static) for trying the model
 - /api/predict: multipart upload endpoint used by /demo
 - /v1/verify-liveness: JSON API for mobile clients (base64 image)
+- /v1/sessions: Agent-native verification endpoints
+- /v1/cases: Fraud case management endpoints
 """
 
 from fastapi import FastAPI, HTTPException, File, UploadFile, Request
@@ -26,10 +28,14 @@ from src.anti_spoof_predict import AntiSpoofPredict
 from src.generate_patches import CropImage
 from src.utility import parse_model_name
 
+# Import agent routers
+from routers import sessions_router, cases_router
+from config import get_settings
+
 app = FastAPI(
     title="BioGuard AI Engine",
-    description="Face Anti-Spoofing API using MiniFASNetV1SE (.pth)",
-    version="1.0.0"
+    description="Face Anti-Spoofing API with AI Agent System using OpenAI Agents SDK",
+    version="2.0.0"
 )
 
 # CORS configuration
@@ -40,6 +46,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include agent routers
+app.include_router(sessions_router, prefix="/v1")
+app.include_router(cases_router, prefix="/v1")
 
 BASE_DIR = os.path.dirname(__file__)
 
@@ -74,11 +84,14 @@ class LivenessResponse(BaseModel):
 @app.get("/")
 async def root():
     """Health check endpoint"""
+    settings = get_settings()
     return {
         "status": "ok",
         "service": "BioGuard AI Engine",
         "model": os.path.basename(MODEL_PATH),
-        "version": "1.0.0"
+        "version": "2.0.0",
+        "agent_enabled": True,
+        "agent_model": settings.openai_model,
     }
 
 

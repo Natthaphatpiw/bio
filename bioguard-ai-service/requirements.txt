@@ -1,19 +1,32 @@
 # FastAPI Server
-fastapi==0.115.0
-uvicorn[standard]==0.32.0
-python-multipart==0.0.12
-jinja2==3.1.4
+fastapi
+uvicorn[standard]
+python-multipart
+jinja2
 
 # AI/ML
-onnxruntime>=1.20.0,<2.0.0
-opencv-python-headless==4.10.0.84
+onnxruntime
+opencv-python-headless
 
 # Image Processing
-Pillow==10.4.0
+Pillow
 
 # Utilities
-python-dotenv==1.0.1
-pydantic==2.9.0
+python-dotenv
+pydantic
+pydantic-settings
+
+# OpenAI Agents SDK
+openai
+openai-agents
+
+# Async Support
+aiofiles
+httpx
+
+# Database (optional - for production)
+# asyncpg>=0.29.0
+# redis>=5.0.0
 
 easydict
 numpy
