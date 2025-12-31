@@ -170,7 +170,7 @@ async def chat_with_copilot(case_id: str, request: CopilotChatRequest):
 
     # Import and run fraud copilot
     try:
-        from agents.fraud_copilot import run_fraud_copilot
+        from bioguard_agents.fraud_copilot import run_fraud_copilot
 
         copilot_response = await run_fraud_copilot(
             case_id=case_id,

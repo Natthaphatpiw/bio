@@ -11,13 +11,7 @@ from typing import Dict, Any, Optional, List
 
 from pydantic import BaseModel, Field
 
-import sys
-# Temporarily remove current directory from path to avoid import conflict
-_current_dir = sys.path.pop(0)
-try:
-    from agents import Agent, Runner, SQLiteSession, ModelSettings, function_tool
-finally:
-    sys.path.insert(0, _current_dir)
+from agents import Agent, Runner, SQLiteSession, ModelSettings, function_tool
 
 from config import get_settings
 from tools.case_tools import (
@@ -27,7 +21,7 @@ from tools.case_tools import (
     summarize_case_timeline,
 )
 from store.feature_store import get_feature_store
-from agents.prompts.copilot_system import COPILOT_SYSTEM_PROMPT
+from bioguard_agents.prompts.copilot_system import COPILOT_SYSTEM_PROMPT
 
 
 @dataclass
@@ -52,7 +46,7 @@ def _record_tool_call(name: str, result: Dict[str, Any]) -> Dict[str, Any]:
     return result
 
 
-@function_tool
+@function_tool(strict_mode=False)
 def get_case_details(case_id: str) -> Dict[str, Any]:
     """Get detailed case information"""
     case = get_case(case_id)
@@ -60,7 +54,7 @@ def get_case_details(case_id: str) -> Dict[str, Any]:
     return _record_tool_call("get_case_details", result)
 
 
-@function_tool
+@function_tool(strict_mode=False)
 def get_session_signals(session_id: str) -> Dict[str, Any]:
     """Get session signals from feature store"""
     import asyncio
@@ -87,7 +81,7 @@ def get_session_signals(session_id: str) -> Dict[str, Any]:
     return _record_tool_call("get_session_signals", result)
 
 
-@function_tool
+@function_tool(strict_mode=False)
 def find_similar_cases(case_id: str, limit: int = 5) -> Dict[str, Any]:
     """Find similar cases based on evidence patterns"""
     case = get_case(case_id)
@@ -135,14 +129,14 @@ def find_similar_cases(case_id: str, limit: int = 5) -> Dict[str, Any]:
     return _record_tool_call("find_similar_cases", result)
 
 
-@function_tool
+@function_tool(strict_mode=False)
 def get_case_timeline(case_id: str) -> Dict[str, Any]:
     """Get case timeline"""
     result = summarize_case_timeline(case_id)
     return _record_tool_call("get_case_timeline", result)
 
 
-@function_tool
+@function_tool(strict_mode=False)
 def add_investigation_note(case_id: str, note: str) -> Dict[str, Any]:
     """Add AI-generated note to case"""
     result = add_case_comment(

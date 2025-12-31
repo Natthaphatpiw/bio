@@ -12,22 +12,16 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
-import sys
-# Temporarily remove current directory from path to avoid import conflict
-_current_dir = sys.path.pop(0)
-try:
-    from agents import (
-        Agent,
-        Runner,
-        SQLiteSession,
-        InputGuardrail,
-        GuardrailFunctionOutput,
-        ModelSettings,
-        function_tool,
-    )
-    from agents.exceptions import InputGuardrailTripwireTriggered
-finally:
-    sys.path.insert(0, _current_dir)
+from agents import (
+    Agent,
+    Runner,
+    SQLiteSession,
+    InputGuardrail,
+    GuardrailFunctionOutput,
+    ModelSettings,
+    function_tool,
+)
+from agents.exceptions import InputGuardrailTripwireTriggered
 
 from config import get_settings
 from models.decisions import (
@@ -41,7 +35,7 @@ from models.decisions import (
     PolicyEvidence,
 )
 from tools import session_tools, scoring_tools, policy_tools, case_tools, stepup_tools
-from agents.prompts.orchestrator_system import ORCHESTRATOR_SYSTEM_PROMPT
+from bioguard_agents.prompts.orchestrator_system import ORCHESTRATOR_SYSTEM_PROMPT
 
 
 @dataclass
@@ -76,63 +70,63 @@ def _record_tool_call(name: str, result: Dict[str, Any]) -> Dict[str, Any]:
     return result
 
 
-@function_tool
+@function_tool(strict_mode=False)
 def get_session_bundle(session_id: str) -> Dict[str, Any]:
     """Fetch latest signals/features for a session from feature store."""
     result = session_tools.get_session_bundle(session_id)
     return _record_tool_call("get_session_bundle", result)
 
 
-@function_tool
+@function_tool(strict_mode=False)
 def score_integrity(bundle: Dict[str, Any]) -> Dict[str, Any]:
     """Return integrity risk + evidence."""
     result = scoring_tools.score_integrity(bundle)
     return _record_tool_call("score_integrity", result)
 
 
-@function_tool
+@function_tool(strict_mode=False)
 def score_lightsync(bundle: Dict[str, Any]) -> Dict[str, Any]:
     """Return injection risk based on lightsync."""
     result = scoring_tools.score_lightsync(bundle)
     return _record_tool_call("score_lightsync", result)
 
 
-@function_tool
+@function_tool(strict_mode=False)
 def score_liveness(bundle: Dict[str, Any]) -> Dict[str, Any]:
     """Return liveness risk."""
     result = scoring_tools.score_liveness(bundle)
     return _record_tool_call("score_liveness", result)
 
 
-@function_tool
+@function_tool(strict_mode=False)
 def score_behavior(bundle: Dict[str, Any]) -> Dict[str, Any]:
     """Return behavior risk (demo)."""
     result = scoring_tools.score_behavior(bundle)
     return _record_tool_call("score_behavior", result)
 
 
-@function_tool
+@function_tool(strict_mode=False)
 def score_context(bundle: Dict[str, Any]) -> Dict[str, Any]:
     """Return transaction context risk."""
     result = scoring_tools.score_context(bundle)
     return _record_tool_call("score_context", result)
 
 
-@function_tool
+@function_tool(strict_mode=False)
 def policy_floor(bundle: Dict[str, Any], scores: Dict[str, Any]) -> Dict[str, Any]:
     """Return hard constraints: min_action, risk_floor, rule_hits."""
     result = policy_tools.policy_floor(bundle, scores)
     return _record_tool_call("policy_floor", result)
 
 
-@function_tool
+@function_tool(strict_mode=False)
 def decide_stepup(action_type: str, ctx: Dict[str, Any]) -> Dict[str, Any]:
     """Return step-up plan based on action type and context."""
     result = stepup_tools.decide_stepup(action_type, ctx)
     return _record_tool_call("decide_stepup", result)
 
 
-@function_tool
+@function_tool(strict_mode=False)
 def create_case(
     session_id: str,
     summary: str,

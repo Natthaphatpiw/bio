@@ -10,7 +10,7 @@ from models.events import SessionEvent, EventType
 from models.decisions import AgentDecision, DecisionType
 from models.bundles import StoredDecision
 from store.feature_store import get_feature_store
-from agents.orchestrator import run_orchestrator
+from bioguard_agents.orchestrator import run_orchestrator
 from tools.notification_tools import notify_dashboard, send_webhook
 from config import get_merchant_config, get_settings
 

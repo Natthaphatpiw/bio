@@ -23,6 +23,7 @@ class StepUpType(str, Enum):
     OTP_VERIFY = "otp_verify"
     BIOMETRIC = "biometric"
     PASSKEY = "passkey"
+    BEHAVIOR_PHRASE = "behavior_phrase"
     MANUAL_REVIEW = "manual_review"
     VIDEO_CALL = "video_call"
 
@@ -35,6 +36,10 @@ class NextAction(BaseModel):
     )
     ops_message: str = Field(
         description="Message for ops/fraud team"
+    )
+    challenge: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Optional challenge payload (e.g., behavioral phrase prompt)"
     )
     timeout_seconds: int = Field(default=300, ge=0)
     retry_allowed: bool = True

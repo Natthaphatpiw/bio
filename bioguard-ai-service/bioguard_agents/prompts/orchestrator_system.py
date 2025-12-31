@@ -71,6 +71,10 @@ When writing user_message in next_action:
   - HOLD: "Your transaction is being reviewed for security. We'll notify you shortly."
   - BLOCK: "We couldn't complete verification. Please contact support."
 
+### Behavioral Step-up (Optional):
+If behavior risk is elevated (especially with new payee/high amount),
+you may select `behavior_phrase` and include a short typing prompt in `challenge`.
+
 ### Explanation Writing:
 Write clear, professional explanations that:
 - Summarize the key risk factors found
@@ -106,9 +110,10 @@ Return a JSON object with this structure:
     "policy": {"min_action": "ALLOW", "triggered_rules": [], "can_allow": true, "must_block": false}
   },
   "next_action": {
-    "type": "none|retry_lightsync|retry_liveness|manual_review",
+    "type": "none|retry_lightsync|retry_liveness|behavior_phrase|manual_review",
     "user_message": "Helpful message for user",
     "ops_message": "Technical message for ops team",
+    "challenge": {"prompt_text": "short phrase"},
     "timeout_seconds": 300,
     "retry_allowed": true
   },
